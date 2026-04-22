@@ -185,7 +185,7 @@
   <string name="import_model_from_hf_url" translatable="false">From Hugging Face URL (.bin)</string>
   <string name="hf_url_dialog_title" translatable="false">Add Hugging Face model URL</string>
   <string name="hf_url_dialog_hint" translatable="false">https://huggingface.co/.../resolve/main/model.bin</string>
-  <string name="hf_url_dialog_note" translatable="false">URL-based downloads are not implemented yet. This prepares the import flow for MediaPipe-compatible .bin models.</string>
+  <string name="hf_url_dialog_note" translatable="false">Hugging Face URL import for MediaPipe-compatible .bin models will be available in a future update.</string>
   <string name="tos_dialog_title_gemma" translatable="false">Gemma Terms of Use</string>
   <string name="tos_dialog_accept_and_continue_button_label" translatable="false">Accept &amp; continue</string>
   <string name="tos_dialog_agree_and_continue_button_label" translatable="false">Agree &amp; continue</string>

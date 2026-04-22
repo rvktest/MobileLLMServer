@@ -35,6 +35,11 @@ import kotlinx.serialization.json.Json
 
 private const val TAG = "LocalLlmServer"
 private const val SERVER_PORT = 8080
+// Max model wait time = MAX_MODEL_INIT_RETRIES * MODEL_INIT_RETRY_DELAY_MS (10s). This keeps API
+// calls responsive while still allowing short warmup windows before we return an initialization
+// error.
+private const val MAX_MODEL_INIT_RETRIES = 100
+private const val MODEL_INIT_RETRY_DELAY_MS = 100L
 
 object LocalLlmServer {
   private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -108,11 +113,15 @@ object LocalLlmServer {
 
           val model = resolveModel(request.model)
           if (model == null) {
+            val errorMessage =
+              if (request.model.isNullOrBlank()) {
+                "No initialized local model is available for inference."
+              } else {
+                "Requested model '${request.model}' is not active. Select and initialize it in the app first."
+              }
             call.respond(
               HttpStatusCode.BadRequest,
-              OpenAiErrorResponse(
-                OpenAiErrorBody(message = "No initialized local model is available for inference.")
-              ),
+              OpenAiErrorResponse(OpenAiErrorBody(message = errorMessage)),
             )
             return@post
           }
@@ -162,35 +171,78 @@ object LocalLlmServer {
     startInference(model = model, prompt = prompt, events = events)
 
     respondTextWriter(contentType = ContentType.Text.EventStream) {
-      write(
-        "data: ${json.encodeToString(ChatCompletionChunkResponse(id = streamId, created = createdAt, model = requestModel ?: model.name, choices = listOf(ChatCompletionChunkChoice(index = 0, delta = ChatCompletionChunkDelta(role = \"assistant\"), finishReason = null))))}\n\n"
+      writeSseData(
+        ChatCompletionChunkResponse(
+          id = streamId,
+          created = createdAt,
+          model = requestModel ?: model.name,
+          choices =
+            listOf(
+              ChatCompletionChunkChoice(
+                index = 0,
+                delta = ChatCompletionChunkDelta(role = "assistant"),
+                finishReason = null,
+              )
+            ),
+        )
       )
-      flush()
 
       for (event in events) {
         when (event) {
           is InferenceEvent.Token -> {
-            write(
-              "data: ${json.encodeToString(ChatCompletionChunkResponse(id = streamId, created = createdAt, model = requestModel ?: model.name, choices = listOf(ChatCompletionChunkChoice(index = 0, delta = ChatCompletionChunkDelta(content = event.text), finishReason = null))))}\n\n"
+            writeSseData(
+              ChatCompletionChunkResponse(
+                id = streamId,
+                created = createdAt,
+                model = requestModel ?: model.name,
+                choices =
+                  listOf(
+                    ChatCompletionChunkChoice(
+                      index = 0,
+                      delta = ChatCompletionChunkDelta(content = event.text),
+                      finishReason = null,
+                    )
+                  ),
+              )
             )
-            flush()
           }
 
           is InferenceEvent.Done -> {
-            write(
-              "data: ${json.encodeToString(ChatCompletionChunkResponse(id = streamId, created = createdAt, model = requestModel ?: model.name, choices = listOf(ChatCompletionChunkChoice(index = 0, delta = ChatCompletionChunkDelta(), finishReason = \"stop\"))))}\n\n"
+            writeSseData(
+              ChatCompletionChunkResponse(
+                id = streamId,
+                created = createdAt,
+                model = requestModel ?: model.name,
+                choices =
+                  listOf(
+                    ChatCompletionChunkChoice(
+                      index = 0,
+                      delta = ChatCompletionChunkDelta(),
+                      finishReason = "stop",
+                    )
+                  ),
+              )
             )
             write("data: [DONE]\n\n")
             flush()
           }
 
           is InferenceEvent.Error -> {
-            write("data: ${json.encodeToString(OpenAiErrorResponse(OpenAiErrorBody(message = event.message)))}\n\n")
+            write(
+              "data: ${json.encodeToString(OpenAiErrorResponse.serializer(), OpenAiErrorResponse(OpenAiErrorBody(message = event.message)))}\n\n"
+            )
             flush()
           }
         }
       }
     }
+  }
+
+  private fun java.io.Writer.writeSseData(response: ChatCompletionChunkResponse) {
+    write(
+      "data: ${json.encodeToString(ChatCompletionChunkResponse.serializer(), response)}\n\n"
+    )
+    flush()
   }
 
   private suspend fun runInferenceCollect(
@@ -251,13 +303,13 @@ object LocalLlmServer {
   }
 
   private suspend fun awaitModelInitialization(model: com.google.ai.edge.gallery.data.Model) {
-    repeat(100) {
+    repeat(MAX_MODEL_INIT_RETRIES) {
       if (model.instance != null) {
         return
       }
-      delay(100)
+      delay(MODEL_INIT_RETRY_DELAY_MS)
     }
-    throw IllegalStateException("Model is not initialized.")
+    throw IllegalStateException("Model is not initialized after waiting up to 10 seconds.")
   }
 
   private fun resolveModel(requestedModel: String?): com.google.ai.edge.gallery.data.Model? {

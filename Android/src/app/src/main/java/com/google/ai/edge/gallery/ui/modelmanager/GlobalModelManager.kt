@@ -565,7 +565,9 @@ fun GlobalModelManager(
           onClick = {
             showHuggingFaceUrlDialog = false
             scope.launch {
-              snackbarHostState.showSnackbar("Saved URL for future Hugging Face import support.")
+              snackbarHostState.showSnackbar(
+                "Hugging Face URL import is not available yet."
+              )
             }
           }
         ) {

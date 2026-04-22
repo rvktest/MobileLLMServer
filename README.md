@@ -15,6 +15,8 @@ Default base URL:
 
 - `http://[phone-ip]:8080/v1`
 
+Current behavior: chat completions run on the model currently selected/initialized in the app UI.
+
 ## VS Code setup
 
 Use your phone's local IP address and configure your extension provider endpoint to:
@@ -27,6 +29,10 @@ Examples:
 - Llama Coder or similar tools: set OpenAI API host/base URL to `http://[phone-ip]:8080/v1`
 
 Make sure your IDE machine and phone are on the same local network.
+
+## Security note
+
+The API is intended for trusted local-network use. Keep your phone on a trusted LAN when the server is running.
 
 ## Models
 

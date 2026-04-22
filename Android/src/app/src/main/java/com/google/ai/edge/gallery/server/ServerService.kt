@@ -21,6 +21,8 @@ private const val CHANNEL_NAME = "MobileLLMServer"
 private const val NOTIFICATION_ID = 8080
 private const val WAKE_LOCK_TAG = "MobileLLMServer:WakeLock"
 private const val WIFI_LOCK_TAG = "MobileLLMServer:WifiLock"
+// Keep locks long enough for practical server sessions while ensuring automatic release.
+private const val LOCK_TIMEOUT_12_HOURS_MS = 12 * 60 * 60 * 1000L
 
 @AndroidEntryPoint
 class ServerService : Service() {
@@ -87,7 +89,7 @@ class ServerService : Service() {
       wakeLock =
         powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
           setReferenceCounted(false)
-          acquire()
+          acquire(LOCK_TIMEOUT_12_HOURS_MS)
         }
     }
 
@@ -96,7 +98,7 @@ class ServerService : Service() {
       wifiLock =
         wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, WIFI_LOCK_TAG).apply {
           setReferenceCounted(false)
-          acquire()
+          acquire(LOCK_TIMEOUT_12_HOURS_MS)
         }
     }
   }
