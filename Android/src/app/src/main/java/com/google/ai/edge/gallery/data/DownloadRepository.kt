@@ -47,6 +47,12 @@ import java.util.concurrent.Executors
 private const val TAG = "AGDownloadRepository"
 private const val MODEL_NAME_TAG = "modelName"
 private const val TASK_ID_TAG = "taskId"
+private val MEDIAPIPE_COMPATIBLE_MODEL_EXTENSIONS = setOf(".task", ".litertlm", ".bin")
+
+fun isMediaPipeCompatibleModelFile(fileName: String): Boolean {
+  val lower = fileName.lowercase()
+  return MEDIAPIPE_COMPATIBLE_MODEL_EXTENSIONS.any { lower.endsWith(it) }
+}
 
 data class AGWorkInfo(val taskId: String, val modelName: String, val workId: String)
 

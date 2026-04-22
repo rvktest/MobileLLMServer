@@ -21,6 +21,7 @@ package com.google.ai.edge.gallery.ui.home
 // import com.google.ai.edge.gallery.ui.preview.PreviewModelManagerViewModel
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -112,6 +113,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.startForegroundService
 import com.google.ai.edge.gallery.GalleryTopAppBar
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.AppBarAction
@@ -128,6 +130,8 @@ import com.google.ai.edge.gallery.ui.common.rememberDelayedAnimationProgress
 import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.server.ServerRuntimeState
+import com.google.ai.edge.gallery.server.ServerService
 import com.google.ai.edge.gallery.ui.theme.customColors
 import com.google.ai.edge.gallery.ui.theme.homePageTitleStyle
 import kotlinx.coroutines.delay
@@ -172,6 +176,7 @@ fun HomeScreen(
   val scope = rememberCoroutineScope()
   val context = LocalContext.current
   val isDevBuild = context.packageName.endsWith(".dev")
+  val serverStatus by ServerRuntimeState.status.collectAsState()
 
   var tasks = uiState.tasks
 
@@ -418,11 +423,67 @@ fun HomeScreen(
                 )
               }
 
-              Column(modifier = Modifier.fillMaxWidth()) {
-                var selectedCategoryIndex by remember { mutableIntStateOf(0) }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                  var selectedCategoryIndex by remember { mutableIntStateOf(0) }
 
-                // App title and intro text.
-                Column(
+                  Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    colors =
+                      CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                  ) {
+                    Column(
+                      modifier = Modifier.fillMaxWidth().padding(16.dp),
+                      verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      Text(
+                        text = stringResource(R.string.server_status_title),
+                        style = MaterialTheme.typography.titleMedium,
+                      )
+                      Text(
+                        text =
+                          stringResource(
+                            if (serverStatus.running) {
+                              R.string.server_status_running
+                            } else {
+                              R.string.server_status_stopped
+                            }
+                          ),
+                        style = MaterialTheme.typography.bodyMedium,
+                      )
+                      Text(
+                        text =
+                          stringResource(
+                            R.string.server_local_api_url,
+                            serverStatus.apiUrl.ifBlank {
+                              context.getString(R.string.server_default_api_url)
+                            }
+                          ),
+                        style = MaterialTheme.typography.bodySmall,
+                      )
+                      TextButton(
+                        onClick = {
+                          val serviceIntent: Intent =
+                            if (serverStatus.running) {
+                              ServerService.buildStopIntent(context)
+                            } else {
+                              ServerService.buildStartIntent(context)
+                            }
+                          startForegroundService(context, serviceIntent)
+                        }
+                      ) {
+                        Text(
+                          text =
+                            stringResource(
+                              if (serverStatus.running) R.string.server_stop
+                              else R.string.server_start
+                            )
+                        )
+                      }
+                    }
+                  }
+
+                  // App title and intro text.
+                  Column(
                   modifier =
                     Modifier.padding(
                         horizontal = if (gm4) 24.dp else 40.dp,
@@ -620,8 +681,8 @@ private fun AppTitle(enableAnimation: Boolean) {
 
 @Composable
 fun AppTitleGm4(enableAnimation: Boolean) {
-  val text1 = "Google"
-  val text2 = "AI Edge Gallery"
+  val text1 = "Mobile"
+  val text2 = "LLMServer"
   val annotatedText = buildAnnotatedString {
     withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(text1) }
     append(" ")

@@ -55,6 +55,7 @@ import com.google.ai.edge.gallery.proto.AccessTokenData
 import com.google.ai.edge.gallery.proto.ImportedModel
 import com.google.ai.edge.gallery.proto.Theme
 import com.google.ai.edge.gallery.runtime.aicore.AICoreModelHelper
+import com.google.ai.edge.gallery.server.ServerRuntimeState
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -278,6 +279,7 @@ constructor(
   }
 
   fun selectModel(model: Model) {
+    ServerRuntimeState.setActiveModel(model)
     if (_uiState.value.selectedModel.name != model.name) {
       _uiState.update { _uiState.value.copy(selectedModel = model) }
     }

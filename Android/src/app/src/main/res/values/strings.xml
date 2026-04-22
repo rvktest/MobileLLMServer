@@ -25,10 +25,10 @@
   <string name="aicore_image_limit_message" translatable="false">The current model can only support 1 image per chat. To ask about another image, create a new chat.</string>
   <string name="aichat_initializing_title" translatable="false">Initializing model</string>
   <string name="aichat_initializing_content" translatable="false">Sit tight, this can take up to 1 minute</string>
-  <string name="app_intro" translatable="false">Explore a world of amazing on-device models from</string>
-  <string name="app_name" translatable="false">Google AI Edge Gallery</string>
-  <string name="app_name_first_part" translatable="false">Google AI</string>
-  <string name="app_name_second_part" translatable="false">Edge Gallery</string>
+  <string name="app_intro" translatable="false">Run local LLMs on your phone and serve them to your IDE.</string>
+  <string name="app_name" translatable="false">MobileLLMServer</string>
+  <string name="app_name_first_part" translatable="false">Mobile</string>
+  <string name="app_name_second_part" translatable="false">LLMServer</string>
   <string name="askimage_emptystate_title" translatable="false">Ask Image</string>
   <string name="askimage_emptystate_content" translatable="false">To get started, tap the + below to add an image (max 10 images per chat) and type a prompt to ask a question about it!</string>
   <string name="askimage_emptystate_content_aicore" translatable="false">To get started, tap the + below to add an image (max 1 image per chat) and type a prompt to ask a question about it!</string>
@@ -174,7 +174,18 @@
   <string name="test" translatable="false">Test</string>
   <string name="text_image_generation_text_field_placeholder" translatable="false">Type prompt…</string>
   <string name="text_input_placeholder_llm_chat" translatable="false">Type prompt…</string>
-  <string name="tos_dialog_title_app" translatable="false">Welcome to Google AI Edge Gallery</string>
+  <string name="tos_dialog_title_app" translatable="false">Welcome to MobileLLMServer</string>
+  <string name="server_status_title" translatable="false">Server Status</string>
+  <string name="server_status_running" translatable="false">Server: RUNNING</string>
+  <string name="server_status_stopped" translatable="false">Server: STOPPED</string>
+  <string name="server_local_api_url" translatable="false">Local API URL: %1$s</string>
+  <string name="server_start" translatable="false">Start</string>
+  <string name="server_stop" translatable="false">Stop</string>
+  <string name="server_default_api_url" translatable="false">http://0.0.0.0:8080/v1</string>
+  <string name="import_model_from_hf_url" translatable="false">From Hugging Face URL (.bin)</string>
+  <string name="hf_url_dialog_title" translatable="false">Add Hugging Face model URL</string>
+  <string name="hf_url_dialog_hint" translatable="false">https://huggingface.co/.../resolve/main/model.bin</string>
+  <string name="hf_url_dialog_note" translatable="false">URL-based downloads are not implemented yet. This prepares the import flow for MediaPipe-compatible .bin models.</string>
   <string name="tos_dialog_title_gemma" translatable="false">Gemma Terms of Use</string>
   <string name="tos_dialog_accept_and_continue_button_label" translatable="false">Accept &amp; continue</string>
   <string name="tos_dialog_agree_and_continue_button_label" translatable="false">Agree &amp; continue</string>

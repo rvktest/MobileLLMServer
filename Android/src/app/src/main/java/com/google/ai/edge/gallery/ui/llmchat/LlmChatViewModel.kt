@@ -24,6 +24,7 @@ import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.runtime.runtimeHelper
+import com.google.ai.edge.gallery.server.ServerRuntimeState
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageAudioClip
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageError
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageLoading
@@ -57,6 +58,7 @@ open class LlmChatViewModelBase() : ChatViewModel() {
     onError: (String) -> Unit,
     allowThinking: Boolean = false,
   ) {
+    ServerRuntimeState.setActiveModel(model)
     val accelerator = model.getStringConfigValue(key = ConfigKeys.ACCELERATOR, defaultValue = "")
     viewModelScope.launch(Dispatchers.Default) {
       setInProgress(true)
@@ -287,6 +289,7 @@ open class LlmChatViewModelBase() : ChatViewModel() {
     onError: (String) -> Unit,
     allowThinking: Boolean = false,
   ) {
+    ServerRuntimeState.setActiveModel(model)
     viewModelScope.launch(Dispatchers.Default) {
       // Wait for model to be initialized.
       while (model.instance == null) {
