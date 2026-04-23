@@ -67,7 +67,7 @@ object LocalLlmServer {
     return "http://$ip:$SERVER_PORT/v1"
   }
 
-  private fun Application.configureRouting(dataStoreRepository: DataStoreRepository) {
+  internal fun Application.configureRouting(dataStoreRepository: DataStoreRepository) {
     install(ContentNegotiation) { json(json) }
     install(CORS) {
       anyHost()
@@ -78,6 +78,21 @@ object LocalLlmServer {
     }
 
     routing {
+      get("/healthz") {
+        call.respond(
+          HealthResponse(
+            serverRunning = true,
+          )
+        )
+      }
+
+      get("/readyz") {
+        val readiness = buildReadinessResponse()
+        val statusCode =
+          if (readiness.status == "ready") HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable
+        call.respond(statusCode, readiness)
+      }
+
       route("/v1") {
         get("/models") {
           val importedModels = dataStoreRepository.readImportedModels()
@@ -126,12 +141,26 @@ object LocalLlmServer {
             return@post
           }
 
-          if (request.stream) {
-            streamResponse(model = model, prompt = userPrompt, requestModel = request.model)
+          if (!ServerRuntimeState.tryStartInference()) {
+            call.respond(
+              HttpStatusCode.Conflict,
+              OpenAiErrorResponse(
+                OpenAiErrorBody(
+                  message =
+                    "Another inference request is already running. Only one active request is supported in this test version.",
+                  code = "server_busy",
+                )
+              ),
+            )
             return@post
           }
 
           try {
+            if (request.stream) {
+              streamResponse(model = model, prompt = userPrompt, requestModel = request.model)
+              return@post
+            }
+
             val output = runInferenceCollect(model = model, prompt = userPrompt)
             call.respond(
               ChatCompletionResponse(
@@ -153,6 +182,8 @@ object LocalLlmServer {
               HttpStatusCode.InternalServerError,
               OpenAiErrorResponse(OpenAiErrorBody(message = t.message ?: "Inference failed.")),
             )
+          } finally {
+            ServerRuntimeState.finishInference()
           }
         }
       }
@@ -170,71 +201,75 @@ object LocalLlmServer {
 
     startInference(model = model, prompt = prompt, events = events)
 
-    respondTextWriter(contentType = ContentType.Text.EventStream) {
-      writeSseData(
-        ChatCompletionChunkResponse(
-          id = streamId,
-          created = createdAt,
-          model = requestModel ?: model.name,
-          choices =
-            listOf(
-              ChatCompletionChunkChoice(
-                index = 0,
-                delta = ChatCompletionChunkDelta(role = "assistant"),
-                finishReason = null,
-              )
-            ),
+    try {
+      respondTextWriter(contentType = ContentType.Text.EventStream) {
+        writeSseData(
+          ChatCompletionChunkResponse(
+            id = streamId,
+            created = createdAt,
+            model = requestModel ?: model.name,
+            choices =
+              listOf(
+                ChatCompletionChunkChoice(
+                  index = 0,
+                  delta = ChatCompletionChunkDelta(role = "assistant"),
+                  finishReason = null,
+                )
+              ),
+          )
         )
-      )
 
-      for (event in events) {
-        when (event) {
-          is InferenceEvent.Token -> {
-            writeSseData(
-              ChatCompletionChunkResponse(
-                id = streamId,
-                created = createdAt,
-                model = requestModel ?: model.name,
-                choices =
-                  listOf(
-                    ChatCompletionChunkChoice(
-                      index = 0,
-                      delta = ChatCompletionChunkDelta(content = event.text),
-                      finishReason = null,
-                    )
-                  ),
+        for (event in events) {
+          when (event) {
+            is InferenceEvent.Token -> {
+              writeSseData(
+                ChatCompletionChunkResponse(
+                  id = streamId,
+                  created = createdAt,
+                  model = requestModel ?: model.name,
+                  choices =
+                    listOf(
+                      ChatCompletionChunkChoice(
+                        index = 0,
+                        delta = ChatCompletionChunkDelta(content = event.text),
+                        finishReason = null,
+                      )
+                    ),
+                )
               )
-            )
-          }
+            }
 
-          is InferenceEvent.Done -> {
-            writeSseData(
-              ChatCompletionChunkResponse(
-                id = streamId,
-                created = createdAt,
-                model = requestModel ?: model.name,
-                choices =
-                  listOf(
-                    ChatCompletionChunkChoice(
-                      index = 0,
-                      delta = ChatCompletionChunkDelta(),
-                      finishReason = "stop",
-                    )
-                  ),
+            is InferenceEvent.Done -> {
+              writeSseData(
+                ChatCompletionChunkResponse(
+                  id = streamId,
+                  created = createdAt,
+                  model = requestModel ?: model.name,
+                  choices =
+                    listOf(
+                      ChatCompletionChunkChoice(
+                        index = 0,
+                        delta = ChatCompletionChunkDelta(),
+                        finishReason = "stop",
+                      )
+                    ),
+                )
               )
-            )
-            write("data: [DONE]\n\n")
-            flush()
-          }
+              write("data: [DONE]\n\n")
+              flush()
+            }
 
-          is InferenceEvent.Error -> {
-            write(
-              "data: ${json.encodeToString(OpenAiErrorResponse.serializer(), OpenAiErrorResponse(OpenAiErrorBody(message = event.message)))}\n\n"
-            )
-            flush()
+            is InferenceEvent.Error -> {
+              write(
+                "data: ${json.encodeToString(OpenAiErrorResponse.serializer(), OpenAiErrorResponse(OpenAiErrorBody(message = event.message)))}\n\n"
+              )
+              flush()
+            }
           }
         }
       }
+    } finally {
+      ServerRuntimeState.finishInference()
     }
   }
 
@@ -340,6 +375,32 @@ object LocalLlmServer {
       Log.e(TAG, "Failed to resolve local IPv4 address", e)
       "0.0.0.0"
     }
+  }
+
+  private fun buildReadinessResponse(): ReadinessResponse {
+    val status = ServerRuntimeState.status.value
+    val activeModel = ServerRuntimeState.getActiveModel()
+    val modelInitialized = activeModel?.instance != null
+    val busy = ServerRuntimeState.isBusy()
+
+    val readinessStatus =
+      when {
+        !status.running -> "server_stopped"
+        activeModel == null -> "no_model_selected"
+        !modelInitialized -> "model_initializing"
+        busy -> "busy"
+        else -> "ready"
+      }
+
+    return ReadinessResponse(
+      status = readinessStatus,
+      serverRunning = status.running,
+      apiUrl = status.apiUrl,
+      activeModel = activeModel?.name,
+      modelSelected = activeModel != null,
+      modelInitialized = modelInitialized,
+      busy = busy,
+    )
   }
 }
 

@@ -53,12 +53,14 @@ class ServerService : Service() {
 
     val apiUrl = LocalLlmServer.start(dataStoreRepository = dataStoreRepository)
     startForeground(NOTIFICATION_ID, buildNotification(apiUrl))
+    dataStoreRepository.saveServerAutostartEnabled(true)
     ServerRuntimeState.setStatus(ServerStatus(running = true, apiUrl = apiUrl))
   }
 
   private fun stopServerAndService(shouldStopSelf: Boolean) {
     LocalLlmServer.stop()
     releaseLocks()
+    dataStoreRepository.saveServerAutostartEnabled(false)
     ServerRuntimeState.stop()
     stopForeground(STOP_FOREGROUND_REMOVE)
     if (shouldStopSelf) {

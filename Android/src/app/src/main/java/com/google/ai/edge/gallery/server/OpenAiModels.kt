@@ -79,3 +79,20 @@ data class OpenAiErrorBody(
 
 @Serializable
 data class OpenAiErrorResponse(val error: OpenAiErrorBody)
+
+@Serializable
+data class HealthResponse(
+  val status: String = "ok",
+  @SerialName("server_running") val serverRunning: Boolean,
+)
+
+@Serializable
+data class ReadinessResponse(
+  val status: String,
+  @SerialName("server_running") val serverRunning: Boolean,
+  @SerialName("api_url") val apiUrl: String,
+  @SerialName("active_model") val activeModel: String? = null,
+  @SerialName("model_selected") val modelSelected: Boolean,
+  @SerialName("model_initialized") val modelInitialized: Boolean,
+  val busy: Boolean,
+)

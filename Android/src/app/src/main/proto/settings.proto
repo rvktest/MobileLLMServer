@@ -78,6 +78,8 @@ message Settings {
   // copybara:strip_end
 
   repeated string viewed_promo_id = 10;
+  string selected_model_name = 11;
+  bool server_autostart_enabled = 12;
 }
 
 message UserData {

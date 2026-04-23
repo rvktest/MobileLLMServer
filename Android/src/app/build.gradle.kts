@@ -116,6 +116,7 @@ dependencies {
   implementation(libs.ktor.serialization.kotlinx.json)
   kapt(libs.hilt.android.compiler)
   testImplementation(libs.junit)
+  testImplementation(libs.ktor.server.test.host)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(platform(libs.androidx.compose.bom))

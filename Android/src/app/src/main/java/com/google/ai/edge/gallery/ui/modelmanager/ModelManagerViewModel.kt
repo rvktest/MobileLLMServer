@@ -19,6 +19,7 @@ package com.google.ai.edge.gallery.ui.modelmanager
 import android.content.Context
 import android.util.Log
 import androidx.activity.result.ActivityResult
+import androidx.core.content.ContextCompat.startForegroundService
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -55,6 +56,7 @@ import com.google.ai.edge.gallery.proto.AccessTokenData
 import com.google.ai.edge.gallery.proto.ImportedModel
 import com.google.ai.edge.gallery.proto.Theme
 import com.google.ai.edge.gallery.runtime.aicore.AICoreModelHelper
+import com.google.ai.edge.gallery.server.ServerService
 import com.google.ai.edge.gallery.server.ServerRuntimeState
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
@@ -281,6 +283,7 @@ constructor(
   fun selectModel(model: Model) {
     ServerRuntimeState.setActiveModel(model)
     if (_uiState.value.selectedModel.name != model.name) {
+      dataStoreRepository.saveSelectedModelName(model.name)
       _uiState.update { _uiState.value.copy(selectedModel = model) }
     }
   }
@@ -1011,6 +1014,8 @@ constructor(
             )
         }
 
+        restoreSelectedModelAndAutostartServerIfNeeded()
+
         // Process pending downloads.
         processPendingDownloads()
 
@@ -1151,6 +1156,10 @@ constructor(
     }
 
     val textInputHistory = dataStoreRepository.readTextInputHistory()
+    val selectedModelName = dataStoreRepository.readSelectedModelName()
+    val allTaskModels = getActiveCustomTasks().flatMap { it.task.models }
+    val restoredSelectedModel =
+      allTaskModels.find { it.name == selectedModelName } ?: allTaskModels.firstOrNull() ?: EMPTY_MODEL
     Log.d(TAG, "text input history: $textInputHistory")
 
     Log.d(TAG, "model download status: $modelDownloadStatus")
@@ -1159,8 +1168,24 @@ constructor(
       tasksByCategory = mapOf(),
       modelDownloadStatus = modelDownloadStatus,
       modelInitializationStatus = modelInstances,
+      selectedModel = restoredSelectedModel,
       textInputHistory = textInputHistory,
     )
+  }
+
+  private fun restoreSelectedModelAndAutostartServerIfNeeded() {
+    val selectedModel = uiState.value.selectedModel
+    if (selectedModel != EMPTY_MODEL) {
+      ServerRuntimeState.setActiveModel(selectedModel)
+    }
+
+    if (
+      selectedModel != EMPTY_MODEL &&
+        dataStoreRepository.readServerAutostartEnabled() &&
+        !ServerRuntimeState.status.value.running
+    ) {
+      startForegroundService(context, ServerService.buildStartIntent(context))
+    }
   }
 
   private fun createModelFromImportedModelInfo(info: ImportedModel): Model {
