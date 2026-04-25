@@ -100,7 +100,7 @@ class ServerService : Service() {
       wifiLock =
         wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, WIFI_LOCK_TAG).apply {
           setReferenceCounted(false)
-          acquire(LOCK_TIMEOUT_12_HOURS_MS)
+          acquire()
         }
     }
   }

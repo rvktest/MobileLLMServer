@@ -9,11 +9,12 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
+import io.ktor.server.application.install
 import io.ktor.server.engine.ApplicationEngine
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondTextWriter
@@ -42,7 +43,7 @@ private const val MAX_MODEL_INIT_RETRIES = 100
 private const val MODEL_INIT_RETRY_DELAY_MS = 100L
 
 object LocalLlmServer {
-  private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+  private val kotlinxJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
   private var server: ApplicationEngine? = null
 
   fun start(dataStoreRepository: DataStoreRepository): String {
@@ -68,7 +69,7 @@ object LocalLlmServer {
   }
 
   internal fun Application.configureRouting(dataStoreRepository: DataStoreRepository) {
-    install(ContentNegotiation) { json(json) }
+    install(ContentNegotiation) { json(kotlinxJson) }
     install(CORS) {
       anyHost()
       allowHeader("Content-Type")
@@ -157,7 +158,7 @@ object LocalLlmServer {
 
           try {
             if (request.stream) {
-              streamResponse(model = model, prompt = userPrompt, requestModel = request.model)
+              call.streamResponse(model = model, prompt = userPrompt, requestModel = request.model)
               return@post
             }
 
@@ -261,7 +262,7 @@ object LocalLlmServer {
 
             is InferenceEvent.Error -> {
               write(
-                "data: ${json.encodeToString(OpenAiErrorResponse.serializer(), OpenAiErrorResponse(OpenAiErrorBody(message = event.message)))}\n\n"
+                "data: ${kotlinxJson.encodeToString(OpenAiErrorResponse.serializer(), OpenAiErrorResponse(OpenAiErrorBody(message = event.message)))}\n\n"
               )
               flush()
             }
@@ -275,7 +276,7 @@ object LocalLlmServer {
 
   private fun java.io.Writer.writeSseData(response: ChatCompletionChunkResponse) {
     write(
-      "data: ${json.encodeToString(ChatCompletionChunkResponse.serializer(), response)}\n\n"
+      "data: ${kotlinxJson.encodeToString(ChatCompletionChunkResponse.serializer(), response)}\n\n"
     )
     flush()
   }

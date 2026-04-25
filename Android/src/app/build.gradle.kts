@@ -67,6 +67,9 @@ android {
     compose = true
     buildConfig = true
   }
+
+  packagingOptions.exclude("META-INF/INDEX.LIST")
+  packagingOptions.exclude("META-INF/io.netty.versions.properties")
 }
 
 dependencies {
