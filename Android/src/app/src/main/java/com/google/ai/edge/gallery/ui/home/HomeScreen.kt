@@ -188,8 +188,21 @@ fun HomeScreen(
     remember(uiState.modelDownloadStatus, uiState.tasks, uiState.modelImportingUpdateTrigger) {
       modelManagerViewModel.getAllDownloadedModels()
     }
+  val activeDownloadCount =
+    remember(uiState.modelDownloadStatus) {
+      uiState.modelDownloadStatus.values.count {
+        it.status == ModelDownloadStatusType.IN_PROGRESS ||
+          it.status == ModelDownloadStatusType.PARTIALLY_DOWNLOADED ||
+          it.status == ModelDownloadStatusType.UNZIPPING
+      }
+    }
+  val failedDownloadCount =
+    remember(uiState.modelDownloadStatus) {
+      uiState.modelDownloadStatus.values.count { it.status == ModelDownloadStatusType.FAILED }
+    }
   var selectedServerModelName by remember { mutableStateOf("") }
   var useGpuForServer by remember { mutableStateOf(true) }
+  var showUseCases by remember { mutableStateOf(false) }
 
   LaunchedEffect(downloadedModels, uiState.selectedModel.name) {
     val selectedModelName = uiState.selectedModel.name
@@ -352,6 +365,28 @@ fun HomeScreen(
                         )
                     ),
                 )
+              }
+              Spacer(modifier = Modifier.height(16.dp))
+              Row(modifier = Modifier.fillMaxWidth()) {
+                SquareDrawerItem(
+                  label = stringResource(R.string.drawer_use_cases_label),
+                  description = stringResource(R.string.drawer_use_cases_description),
+                  icon = Icons.Rounded.Flag,
+                  onClick = {
+                    showUseCases = true
+                    scope.launch { drawerState.close() }
+                  },
+                  modifier = Modifier.weight(1f),
+                  iconBrush =
+                    linearGradient(
+                      colors =
+                        listOf(
+                          MaterialTheme.customColors.taskBgGradientColors[0][0],
+                          MaterialTheme.customColors.taskBgGradientColors[0][1],
+                        )
+                    ),
+                )
+                Spacer(modifier = Modifier.weight(1f))
               }
             }
           }
@@ -621,44 +656,97 @@ fun HomeScreen(
                     AppTitle(enableAnimation = enableAnimation)
                   }
                   IntroText(enableAnimation = enableAnimation, gm4 = gm4)
-                  if (gm4) {
-                    TryGm4IntroText(enableAnimation = enableAnimation)
+                }
+
+                Card(
+                  modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                  colors =
+                    CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                ) {
+                  Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                  ) {
+                    Text(
+                      text = stringResource(R.string.home_downloads_title),
+                      style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                      text = stringResource(R.string.home_downloads_available, downloadedModels.size),
+                      style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                      text = stringResource(R.string.home_downloads_active, activeDownloadCount),
+                      style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (failedDownloadCount > 0) {
+                      Text(
+                        text = stringResource(R.string.home_downloads_failed, failedDownloadCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                      )
+                    }
+                    TextButton(onClick = onModelsClicked) {
+                      Text(text = stringResource(R.string.home_manage_models))
+                    }
                   }
                 }
 
-                // Tab header for categories.
-                //
-                // synchronizes the `pagerState` and the `selectedCategoryIndex` to ensure that
-                //  both the tab header and the task list always show the correct category and page.
-                val pagerState = rememberPagerState(pageCount = { sortedCategories.size })
-                LaunchedEffect(pagerState.settledPage) {
-                  selectedCategoryIndex = pagerState.settledPage
-                }
-                if (sortedCategories.size > 1) {
-                  CategoryTabHeader(
-                    sortedCategories = sortedCategories,
-                    selectedIndex = selectedCategoryIndex,
-                    enableAnimation = enableAnimation,
-                    onCategorySelected = { index ->
-                      selectedCategoryIndex = index
-                      scope.launch { pagerState.animateScrollToPage(page = index) }
-                    },
-                  )
-                }
+                if (showUseCases) {
+                  // Tab header for categories.
+                  //
+                  // synchronizes the `pagerState` and the `selectedCategoryIndex` to ensure that
+                  //  both the tab header and the task list always show the correct category and page.
+                  val pagerState = rememberPagerState(pageCount = { sortedCategories.size })
+                  LaunchedEffect(pagerState.settledPage) {
+                    selectedCategoryIndex = pagerState.settledPage
+                  }
+                  if (sortedCategories.size > 1) {
+                    CategoryTabHeader(
+                      sortedCategories = sortedCategories,
+                      selectedIndex = selectedCategoryIndex,
+                      enableAnimation = enableAnimation,
+                      onCategorySelected = { index ->
+                        selectedCategoryIndex = index
+                        scope.launch { pagerState.animateScrollToPage(page = index) }
+                      },
+                    )
+                  }
 
-                // Task list in a horizontal pager. Each page shows the list of tasks for the
-                // category.
-                val grid = gm4
-                TaskList(
-                  modelManagerViewModel = modelManagerViewModel,
-                  pagerState = pagerState,
-                  sortedCategories = sortedCategories,
-                  tasksByCategories = uiState.tasksByCategory,
-                  enableAnimation = enableAnimation,
-                  navigateToTaskScreen = navigateToTaskScreen,
-                  gm4 = gm4,
-                  grid = grid,
-                )
+                  // Task list in a horizontal pager. Each page shows the list of tasks for the
+                  // category.
+                  val grid = gm4
+                  TaskList(
+                    modelManagerViewModel = modelManagerViewModel,
+                    pagerState = pagerState,
+                    sortedCategories = sortedCategories,
+                    tasksByCategories = uiState.tasksByCategory,
+                    enableAnimation = enableAnimation,
+                    navigateToTaskScreen = navigateToTaskScreen,
+                    gm4 = gm4,
+                    grid = grid,
+                  )
+                } else {
+                  Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                    colors =
+                      CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                  ) {
+                    Column(
+                      modifier = Modifier.fillMaxWidth().padding(16.dp),
+                      verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      Text(
+                        text = stringResource(R.string.home_use_cases_hidden_title),
+                        style = MaterialTheme.typography.titleMedium,
+                      )
+                      Text(
+                        text = stringResource(R.string.home_use_cases_hidden_description),
+                        style = MaterialTheme.typography.bodyMedium,
+                      )
+                    }
+                  }
+                }
 
                 Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding() + 10.dp))
               }
@@ -828,8 +916,6 @@ fun AppTitleGm4(enableAnimation: Boolean) {
 
 @Composable
 private fun IntroText(enableAnimation: Boolean, gm4: Boolean) {
-  val litertUrl = "https://huggingface.co/litert-community"
-
   // Intro text animation:
   //
   // fade in + slide up.
@@ -845,18 +931,13 @@ private fun IntroText(enableAnimation: Boolean, gm4: Boolean) {
     }
 
   val introText = buildAnnotatedString {
-    val gemma4Url = "https://ai.google.dev/gemma"
     if (gm4) {
-      append("Discover the power of on-device AI models from the ")
-      append(buildTrackableUrlAnnotatedString(url = litertUrl, linkText = "LiteRT community"))
-      append(", featuring the all-new ")
-      append(buildTrackableUrlAnnotatedString(url = gemma4Url, linkText = "Gemma 4"))
-      append(".")
+      append(stringResource(R.string.home_server_intro))
     } else {
       append("${stringResource(R.string.app_intro)} ")
       append(
         buildTrackableUrlAnnotatedString(
-          url = litertUrl,
+          url = "https://huggingface.co/litert-community",
           linkText = stringResource(R.string.litert_community_label),
         )
       )

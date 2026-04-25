@@ -92,6 +92,8 @@
   <string name="drawer_settings_description" translatable="false">Manage application settings</string>
   <string name="drawer_models_label" translatable="false">Models</string>
   <string name="drawer_models_description" translatable="false">Browse, try, and benchmark models</string>
+  <string name="drawer_use_cases_label" translatable="false">Use Cases</string>
+  <string name="drawer_use_cases_description" translatable="false">Show AI Chat, Agent Skills, and demos</string>
   <string name="edit" translatable="false">Edit</string>
   <string name="edit_secret" translatable="false">Edit secret</string>
   <string name="enter_instruction" translatable="false">Enter instruction</string>
@@ -182,6 +184,14 @@
   <string name="server_start" translatable="false">Start</string>
   <string name="server_stop" translatable="false">Stop</string>
   <string name="server_default_api_url" translatable="false">http://0.0.0.0:8080/v1</string>
+  <string name="home_server_intro" translatable="false">Start and manage your local LLM server, choose the active model, and keep your API endpoint ready for local tools.</string>
+  <string name="home_downloads_title" translatable="false">Model downloads</string>
+  <string name="home_downloads_available" translatable="false">Downloaded models: %1$d</string>
+  <string name="home_downloads_active" translatable="false">Active downloads: %1$d</string>
+  <string name="home_downloads_failed" translatable="false">Failed downloads: %1$d</string>
+  <string name="home_manage_models" translatable="false">Manage models</string>
+  <string name="home_use_cases_hidden_title" translatable="false">AI use cases are hidden</string>
+  <string name="home_use_cases_hidden_description" translatable="false">Open the menu and tap Use Cases to view AI Chat, Agent Skills, and other demos.</string>
   <string name="import_model_from_hf_url" translatable="false">From Hugging Face URL (.bin)</string>
   <string name="hf_url_dialog_title" translatable="false">Add Hugging Face model URL</string>
   <string name="hf_url_dialog_hint" translatable="false">https://huggingface.co/.../resolve/main/model.bin</string>
