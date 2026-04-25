@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 data class ServerStatus(
   val running: Boolean = false,
   val apiUrl: String = "",
+  val backend: String = "",
   val busy: Boolean = false,
 )
 
@@ -17,17 +18,33 @@ object ServerRuntimeState {
   val status: StateFlow<ServerStatus> = _status.asStateFlow()
 
   private var activeModel: Model? = null
+  private var backendLabel: String = ""
+  private var availableLocalModelIds: Set<String> = emptySet()
   private val inferenceInProgress = AtomicBoolean(false)
 
   fun setStatus(status: ServerStatus) {
-    _status.value = status.copy(busy = inferenceInProgress.get())
+    val backend = if (status.backend.isNotBlank()) status.backend else backendLabel
+    _status.value = status.copy(backend = backend, busy = inferenceInProgress.get())
   }
 
-  fun setActiveModel(model: Model) {
+  fun setActiveModel(model: Model?) {
     activeModel = model
   }
 
   fun getActiveModel(): Model? = activeModel
+
+  fun setBackendLabel(label: String) {
+    backendLabel = label
+    _status.value = _status.value.copy(backend = label)
+  }
+
+  fun getBackendLabel(): String = backendLabel
+
+  fun setAvailableLocalModelIds(modelIds: Collection<String>) {
+    availableLocalModelIds = modelIds.filter { it.isNotBlank() }.toSet()
+  }
+
+  fun getAvailableLocalModelIds(): Set<String> = availableLocalModelIds
 
   fun isBusy(): Boolean = inferenceInProgress.get()
 
@@ -46,6 +63,8 @@ object ServerRuntimeState {
 
   fun stop() {
     inferenceInProgress.set(false)
-    _status.value = ServerStatus(running = false, apiUrl = "", busy = false)
+    activeModel = null
+    backendLabel = ""
+    _status.value = ServerStatus(running = false, apiUrl = "", backend = "", busy = false)
   }
 }

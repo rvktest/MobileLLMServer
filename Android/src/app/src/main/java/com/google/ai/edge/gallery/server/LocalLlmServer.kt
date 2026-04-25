@@ -1,8 +1,11 @@
 package com.google.ai.edge.gallery.server
 
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.util.Log
 import com.google.ai.edge.gallery.data.DataStoreRepository
-import com.google.ai.edge.gallery.proto.ImportedModel
 import com.google.ai.edge.gallery.runtime.runtimeHelper
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -14,7 +17,10 @@ import io.ktor.server.engine.ApplicationEngine
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.plugins.cors.routing.*
+import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.cors.routing.allowHeader
+import io.ktor.server.plugins.cors.routing.allowMethod
+import io.ktor.server.plugins.cors.routing.anyHost
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondTextWriter
@@ -28,30 +34,32 @@ import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 private const val TAG = "LocalLlmServer"
 private const val SERVER_PORT = 8080
-// Max model wait time = MAX_MODEL_INIT_RETRIES * MODEL_INIT_RETRY_DELAY_MS (10s). This keeps API
-// calls responsive while still allowing short warmup windows before we return an initialization
-// error.
+// Max model wait time = MAX_MODEL_INIT_RETRIES * MODEL_INIT_RETRY_DELAY_MS (10s).
 private const val MAX_MODEL_INIT_RETRIES = 100
 private const val MODEL_INIT_RETRY_DELAY_MS = 100L
 
 object LocalLlmServer {
   private val kotlinxJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
   private var server: ApplicationEngine? = null
+  private var appContext: Context? = null
 
-  fun start(dataStoreRepository: DataStoreRepository): String {
+  fun start(dataStoreRepository: DataStoreRepository, context: Context): String {
+    appContext = context.applicationContext
     if (server != null) {
       return currentApiUrl()
     }
 
-    server = embeddedServer(Netty, port = SERVER_PORT) { configureRouting(dataStoreRepository) }.start(wait = false)
+    server =
+      embeddedServer(Netty, port = SERVER_PORT) { configureRouting(dataStoreRepository) }
+        .start(wait = false)
 
     return currentApiUrl()
   }
@@ -59,6 +67,7 @@ object LocalLlmServer {
   fun stop() {
     server?.stop(gracePeriodMillis = 500, timeoutMillis = 1500)
     server = null
+    appContext = null
   }
 
   fun isRunning(): Boolean = server != null
@@ -96,24 +105,36 @@ object LocalLlmServer {
 
       route("/v1") {
         get("/models") {
-          val importedModels = dataStoreRepository.readImportedModels()
-          val activeModel = ServerRuntimeState.getActiveModel()
+          val importedModelIds = dataStoreRepository.readImportedModels().map { it.fileName }
+          val activeModelId = ServerRuntimeState.getActiveModel()?.name
+          val knownModelIds = ServerRuntimeState.getAvailableLocalModelIds()
 
-          val models =
+          val modelIds =
             buildList {
-                addAll(importedModels.map { imported -> imported.toOpenAiModel() })
-                if (activeModel != null && none { it.id == activeModel.name }) {
-                  add(
-                    OpenAiModel(
-                      id = activeModel.name,
-                      created = System.currentTimeMillis() / 1000,
-                    )
-                  )
+                addAll(importedModelIds)
+                addAll(knownModelIds)
+                if (!activeModelId.isNullOrBlank()) {
+                  add(activeModelId)
                 }
               }
-              .sortedBy { it.id.lowercase() }
+              .filter { it.isNotBlank() }
+              .distinct()
+              .sortedBy { it.lowercase() }
+
+          val models =
+            modelIds.map { modelId ->
+              OpenAiModel(
+                id = modelId,
+                created = System.currentTimeMillis() / 1000,
+                active = modelId == activeModelId,
+              )
+            }
 
           call.respond(ModelsResponse(data = models))
+        }
+
+        get("/node/status") {
+          call.respond(buildNodeStatusResponse())
         }
 
         post("/chat/completions") {
@@ -189,6 +210,30 @@ object LocalLlmServer {
         }
       }
     }
+  }
+
+  private fun buildNodeStatusResponse(): NodeStatusResponse {
+    val batteryIntent =
+      appContext?.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+    val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+    val batteryLevel =
+      if (level >= 0 && scale > 0) {
+        ((level.toFloat() / scale.toFloat()) * 100f).toInt()
+      } else {
+        null
+      }
+    val batteryStatus = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+    val isCharging =
+      batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
+        batteryStatus == BatteryManager.BATTERY_STATUS_FULL
+
+    return NodeStatusResponse(
+      activeModel = ServerRuntimeState.getActiveModel()?.name,
+      backend = ServerRuntimeState.getBackendLabel(),
+      batteryLevel = batteryLevel,
+      isCharging = isCharging,
+    )
   }
 
   private suspend fun io.ktor.server.application.ApplicationCall.streamResponse(
@@ -354,10 +399,6 @@ object LocalLlmServer {
       return activeModel
     }
     return null
-  }
-
-  private fun ImportedModel.toOpenAiModel(): OpenAiModel {
-    return OpenAiModel(id = fileName, created = System.currentTimeMillis() / 1000)
   }
 
   private fun getLocalIpv4Address(): String {

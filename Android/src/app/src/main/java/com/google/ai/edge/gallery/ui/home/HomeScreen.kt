@@ -67,13 +67,18 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -118,9 +123,11 @@ import com.google.ai.edge.gallery.GalleryTopAppBar
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.AppBarAction
 import com.google.ai.edge.gallery.data.AppBarActionType
+import com.google.ai.edge.gallery.data.Accelerator
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.Category
 import com.google.ai.edge.gallery.data.CategoryInfo
+import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.RevealingText
 import com.google.ai.edge.gallery.ui.common.SwipingText
@@ -177,6 +184,22 @@ fun HomeScreen(
   val context = LocalContext.current
   val isDevBuild = context.packageName.endsWith(".dev")
   val serverStatus by ServerRuntimeState.status.collectAsState()
+  val downloadedModels =
+    remember(uiState.modelDownloadStatus, uiState.tasks, uiState.modelImportingUpdateTrigger) {
+      modelManagerViewModel.getAllDownloadedModels()
+    }
+  var selectedServerModelName by remember { mutableStateOf("") }
+  var useGpuForServer by remember { mutableStateOf(true) }
+
+  LaunchedEffect(downloadedModels, uiState.selectedModel.name) {
+    val selectedModelName = uiState.selectedModel.name
+    val defaultModel =
+      downloadedModels.find { it.name == selectedModelName } ?: downloadedModels.firstOrNull()
+    if (selectedServerModelName.isBlank() || downloadedModels.none { it.name == selectedServerModelName }) {
+      selectedServerModelName = defaultModel?.name.orEmpty()
+    }
+    ServerRuntimeState.setAvailableLocalModelIds(downloadedModels.map { it.name })
+  }
 
   var tasks = uiState.tasks
 
@@ -435,6 +458,20 @@ fun HomeScreen(
                       modifier = Modifier.fillMaxWidth().padding(16.dp),
                       verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                      val selectedServerModel: Model? =
+                        downloadedModels.firstOrNull { it.name == selectedServerModelName }
+
+                      fun startOrSwapServer(model: Model) {
+                        modelManagerViewModel.selectModel(model)
+                        val serviceIntent =
+                          ServerService.buildStartIntent(
+                            context = context,
+                            modelPath = model.getPath(context),
+                            useGpu = useGpuForServer,
+                          )
+                        startForegroundService(context, serviceIntent)
+                      }
+
                       Text(
                         text = stringResource(R.string.server_status_title),
                         style = MaterialTheme.typography.titleMedium,
@@ -460,13 +497,98 @@ fun HomeScreen(
                           ),
                         style = MaterialTheme.typography.bodySmall,
                       )
+
+                      Text(
+                        text = "Server model",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp),
+                      )
+
+                      var modelDropdownExpanded by remember { mutableStateOf(false) }
+                      ExposedDropdownMenuBox(
+                        expanded = modelDropdownExpanded,
+                        onExpandedChange = { modelDropdownExpanded = !modelDropdownExpanded },
+                      ) {
+                        TextField(
+                          value =
+                            selectedServerModel?.displayName?.ifEmpty { selectedServerModel.name }
+                              ?: "No downloaded model",
+                          onValueChange = {},
+                          readOnly = true,
+                          modifier = Modifier.menuAnchor().fillMaxWidth(),
+                          trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelDropdownExpanded)
+                          },
+                          singleLine = true,
+                        )
+                        ExposedDropdownMenu(
+                          expanded = modelDropdownExpanded,
+                          onDismissRequest = { modelDropdownExpanded = false },
+                        ) {
+                          downloadedModels.forEach { model ->
+                            DropdownMenuItem(
+                              text = { Text(model.displayName.ifEmpty { model.name }) },
+                              onClick = {
+                                selectedServerModelName = model.name
+                                modelDropdownExpanded = false
+                                if (serverStatus.running) {
+                                  startOrSwapServer(model)
+                                }
+                              },
+                            )
+                          }
+                        }
+                      }
+
+                      Text(
+                        text = "Hardware backend",
+                        style = MaterialTheme.typography.labelLarge,
+                      )
+                      Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                      ) {
+                        Row(
+                          verticalAlignment = Alignment.CenterVertically,
+                          modifier = Modifier.clickable {
+                            useGpuForServer = false
+                            if (serverStatus.running && selectedServerModel != null) {
+                              startOrSwapServer(selectedServerModel)
+                            }
+                          },
+                        ) {
+                          RadioButton(selected = !useGpuForServer, onClick = null)
+                          Text(text = Accelerator.CPU.label)
+                        }
+                        Row(
+                          verticalAlignment = Alignment.CenterVertically,
+                          modifier = Modifier.clickable {
+                            useGpuForServer = true
+                            if (serverStatus.running && selectedServerModel != null) {
+                              startOrSwapServer(selectedServerModel)
+                            }
+                          },
+                        ) {
+                          RadioButton(selected = useGpuForServer, onClick = null)
+                          Text(text = Accelerator.GPU.label)
+                        }
+                      }
+
                       TextButton(
+                        enabled = serverStatus.running || selectedServerModel != null,
                         onClick = {
                           val serviceIntent: Intent =
                             if (serverStatus.running) {
                               ServerService.buildStopIntent(context)
                             } else {
-                              ServerService.buildStartIntent(context)
+                              if (selectedServerModel == null) {
+                                return@TextButton
+                              }
+                              ServerService.buildStartIntent(
+                                context = context,
+                                modelPath = selectedServerModel.getPath(context),
+                                useGpu = useGpuForServer,
+                              ).also { modelManagerViewModel.selectModel(selectedServerModel) }
                             }
                           startForegroundService(context, serviceIntent)
                         }

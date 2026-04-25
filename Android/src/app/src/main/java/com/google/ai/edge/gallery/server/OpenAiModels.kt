@@ -62,6 +62,7 @@ data class OpenAiModel(
   @SerialName("object") val objectType: String = "model",
   val created: Long,
   @SerialName("owned_by") val ownedBy: String = "local",
+  val active: Boolean = false,
 )
 
 @Serializable
@@ -95,4 +96,12 @@ data class ReadinessResponse(
   @SerialName("model_selected") val modelSelected: Boolean,
   @SerialName("model_initialized") val modelInitialized: Boolean,
   val busy: Boolean,
+)
+
+@Serializable
+data class NodeStatusResponse(
+  @SerialName("active_model") val activeModel: String? = null,
+  val backend: String,
+  @SerialName("battery_level") val batteryLevel: Int? = null,
+  @SerialName("is_charging") val isCharging: Boolean,
 )
