@@ -67,6 +67,9 @@ android {
     compose = true
     buildConfig = true
   }
+
+  packagingOptions.exclude("META-INF/INDEX.LIST")
+  packagingOptions.exclude("META-INF/io.netty.versions.properties")
 }
 
 dependencies {
@@ -109,8 +112,14 @@ dependencies {
   implementation(libs.firebase.messaging)
   implementation(libs.androidx.exifinterface)
   implementation(libs.moshi.kotlin)
+  implementation(libs.ktor.server.core)
+  implementation(libs.ktor.server.netty)
+  implementation(libs.ktor.server.content.negotiation)
+  implementation(libs.ktor.server.cors)
+  implementation(libs.ktor.serialization.kotlinx.json)
   kapt(libs.hilt.android.compiler)
   testImplementation(libs.junit)
+  testImplementation(libs.ktor.server.test.host)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.espresso.core)
   androidTestImplementation(platform(libs.androidx.compose.bom))

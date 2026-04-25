@@ -1,87 +1,78 @@
-# Google AI Edge Gallery ✨
+# MobileLLMServer
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/google-ai-edge/gallery)](https://github.com/google-ai-edge/gallery/releases)
+Run local LLMs on your phone and serve them to your IDE.
 
-**Explore, Experience, and Evaluate the Future of On-Device Generative AI with Google AI Edge.**
+## What this project does
 
-AI Edge Gallery is the premier destination for running the world's most powerful open-source Large Language Models (LLMs) on your mobile device. Experience high-performance Generative AI directly on your hardware—fully offline, private, and lightning-fast.
+MobileLLMServer runs MediaPipe-compatible local LLMs (for example Gemma variants) on-device and exposes an OpenAI-compatible API over your local network.
 
-**Now Featuring: Gemma 4**
+## OpenAI-compatible APIs
 
-The latest version brings official support for the newly released Gemma 4 family. As the centerpiece of this release, Gemma 4 allows you to test the cutting edge of on-device AI. Experience advanced reasoning, logic, and creative capabilities without ever sending your data to a server.
+- `GET /healthz`
+- `GET /readyz`
+- `GET /v1/models`
+- `POST /v1/chat/completions`
 
+Default base URL:
 
-| **Install the app today from Google Play** | **Install the app today from App Store** |
-| :--- | :--- |
-| <a href='https://play.google.com/store/apps/details?id=com.google.ai.edge.gallery'><img alt='Get it on Google Play' height="120" src='https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png'/></a> | <a href="https://apps.apple.com/us/app/google-ai-edge-gallery/id6749645337?itscg=30200&itsct=apps_box_badge&mttnsubad=6749645337" style="display: inline-block;"> <img src="https://toolbox.marketingtools.apple.com/api/v2/badges/download-on-the-app-store/black/en-us?releaseDate=1771977600" alt="Download on the App Store" style="width: 246px; height: 90px; vertical-align: middle; object-fit: contain;" /></a> |
+- `http://[phone-ip]:8080/v1`
 
-For users without Google Play access, install the apk from the [**latest release**](https://github.com/google-ai-edge/gallery/releases/latest/)
+Current behavior in this first test version:
 
+- chat completions run on the model currently selected and initialized in the app UI;
+- only one active inference request is supported at a time;
+- `GET /readyz` reports whether the server is ready, still initializing a model, or busy;
+- the server currently uses the last `user` message content as the prompt;
+- the selected model is persisted and restored after model loading;
+- server autostart intent is persisted so the app can restore the server state path in later sessions;
+- request-level model switching is not supported yet.
 
-## App Preview
+Readiness states currently returned by `GET /readyz`:
 
-<img width="480" alt="01" src="https://github.com/user-attachments/assets/a809ad78-aef4-4169-91ee-de7213cbb3bd" />
-<img width="480" alt="02" src="https://github.com/user-attachments/assets/1effd10d-f45a-4f7b-9435-f50f1bdd36b6" />
-<img width="480" alt="03" src="https://github.com/user-attachments/assets/e5089e41-2c18-4fbe-9011-ebe9e5a02044" />
-<img width="480" alt="04" src="https://github.com/user-attachments/assets/0f39d3ed-7403-4606-a7c6-b2c7e51ba6c1" />
-<img width="480" alt="05" src="https://github.com/user-attachments/assets/8c229e96-b598-4735-9f60-e96907e1d5d5" />
-<img width="480" alt="06" src="https://github.com/user-attachments/assets/ac9fb77b-81de-4197-9ed3-f6fe58290b3e" />
-<img width="480" alt="07" src="https://github.com/user-attachments/assets/bc86ba07-2eaf-49b1-980f-8a87a85c596f" />
-<img width="480" alt="08" src="https://github.com/user-attachments/assets/061564ed-030f-4630-810b-13a7863fce4c" />
+- `ready`
+- `busy`
+- `model_initializing`
+- `no_model_selected`
+- `server_stopped`
 
-## ✨ Core Features
+## VS Code setup
 
-* **Agent Skills**: Transform your LLM from a conversationalist into a proactive assistant. Use the Agent Skills tile to augment model capabilities with tools like Wikipedia for fact-grounding, interactive maps, and rich visual summary cards. You can even load modular skills from a URL or browse community contributions on GitHub Discussions.
+Use your phone's local IP address and configure your extension provider endpoint to:
 
-* **AI Chat with Thinking Mode**: Engage in fluid, multi-turn conversations and toggle the new Thinking Mode to peek "under the hood." This feature allows you to see the model’s step-by-step reasoning process, which is perfect for understanding complex problem-solving. Note: Thinking Mode currently works with supported models, starting with the Gemma 4 family.
+- `http://[phone-ip]:8080/v1`
 
-* **Ask Image**: Use multimodal power to identify objects, solve visual puzzles, or get detailed descriptions using your device’s camera or photo gallery.
+Examples:
 
-* **Audio Scribe**: Transcribe and translate voice recordings into text in real-time using high-efficiency on-device language models.
+- Continue.dev: set OpenAI-compatible base URL to `http://[phone-ip]:8080/v1`
+- Llama Coder or similar tools: set OpenAI API host/base URL to `http://[phone-ip]:8080/v1`
 
-* **Prompt Lab**: A dedicated workspace to test different prompts and single-turn use cases with granular control over model parameters like temperature and top-k.
+Note: the official GitHub Copilot extension is not a drop-in OpenAI-compatible custom endpoint client. For this project, OpenAI-compatible tools such as Continue and similar clients are the realistic first targets.
 
-* **Mobile Actions**: Unlock offline device controls and automated tasks powered entirely by a finetune of FuntionGemma 270m.
+Make sure your IDE machine and phone are on the same local network.
 
-* **Tiny Garden**: A fun, experimental mini-game that uses natural language to plant and harvest a virtual garden using a finetune of FunctionGemma 270m.
+## Security note
 
-* **Model Management & Benchmark**: Gallery is a flexible sandbox for a wide variety of open-source models. Easily download models from the list or load your own custom models. Manage your model library effortlessly and run benchmark tests to understand exactly how each model performs on your specific hardware.
+The API is intended for trusted local-network use. Keep your phone on a trusted LAN when the server is running.
 
-* **100% On-Device Privacy**: All model inferences happen directly on your device hardware. No internet is required, ensuring total privacy for your prompts, images, and sensitive data.
+## Models
 
-## 🏁 Get Started in Minutes!
+- Built-in model management/download remains available in the app.
+- Imported local model metadata is exposed via `/v1/models`.
 
-1. **Check OS Requirement**: Android 12 and up, and iOS 17 and up.
-2.  **Download the App:**
-    - Install the app from [Google Play](https://play.google.com/store/apps/details?id=com.google.ai.edge.gallery) or [App Store](https://apps.apple.com/us/app/google-ai-edge-gallery/id6749645337).
-    - For users without Google Play access: install the apk from the [**latest release**](https://github.com/google-ai-edge/gallery/releases/latest/)
-3.  **Install & Explore:** For detailed installation instructions (including for corporate devices) and a full user guide, head over to our [**Project Wiki**](https://github.com/google-ai-edge/gallery/wiki)!
+### Hugging Face models (`.bin`)
 
-## 🛠️ Technology Highlights
+The app now accepts MediaPipe-compatible `.bin` model files in validation paths.
 
-*   **Google AI Edge:** Core APIs and tools for on-device ML.
-*   **LiteRT:** Lightweight runtime for optimized model execution.
-*   **Hugging Face Integration:** For model discovery and download.
+The UI also contains a placeholder path for Hugging Face URL-based imports, but that flow is not implemented yet.
 
-## ⌨️ Development
+When adding models manually, ensure they are MediaPipe-compatible (`.task`, `.litertlm`, or `.bin`).
 
-Check out the [development notes](DEVELOPMENT.md) for instructions about how to build the app locally.
+## Development
 
-## 🤝 Feedback
+Android project root:
 
-This is an **experimental Beta release**, and your input is crucial!
+- `Android/src`
 
-*   🐞 **Found a bug?** [Report it here!](https://github.com/google-ai-edge/gallery/issues/new?assignees=&labels=bug&template=bug_report.md&title=%5BBUG%5D)
-*   💡 **Have an idea?** [Suggest a feature!](https://github.com/google-ai-edge/gallery/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=%5BFEATURE%5D)
+See:
 
-## 📄 License
-
-Licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for details.
-
-## 🔗 Useful Links
-
-*   [**Project Wiki (Detailed Guides)**](https://github.com/google-ai-edge/gallery/wiki)
-*   [Hugging Face LiteRT Community](https://huggingface.co/litert-community)
-*   [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM)
-*   [Google AI Edge Documentation](https://ai.google.dev/edge)
+- `DEVELOPMENT.md`

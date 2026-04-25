@@ -21,6 +21,7 @@ package com.google.ai.edge.gallery.ui.home
 // import com.google.ai.edge.gallery.ui.preview.PreviewModelManagerViewModel
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -66,13 +67,18 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -112,13 +118,16 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.startForegroundService
 import com.google.ai.edge.gallery.GalleryTopAppBar
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.AppBarAction
 import com.google.ai.edge.gallery.data.AppBarActionType
+import com.google.ai.edge.gallery.data.Accelerator
 import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.Category
 import com.google.ai.edge.gallery.data.CategoryInfo
+import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.RevealingText
 import com.google.ai.edge.gallery.ui.common.SwipingText
@@ -128,6 +137,8 @@ import com.google.ai.edge.gallery.ui.common.rememberDelayedAnimationProgress
 import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.server.ServerRuntimeState
+import com.google.ai.edge.gallery.server.ServerService
 import com.google.ai.edge.gallery.ui.theme.customColors
 import com.google.ai.edge.gallery.ui.theme.homePageTitleStyle
 import kotlinx.coroutines.delay
@@ -172,6 +183,36 @@ fun HomeScreen(
   val scope = rememberCoroutineScope()
   val context = LocalContext.current
   val isDevBuild = context.packageName.endsWith(".dev")
+  val serverStatus by ServerRuntimeState.status.collectAsState()
+  val downloadedModels =
+    remember(uiState.modelDownloadStatus, uiState.tasks, uiState.modelImportingUpdateTrigger) {
+      modelManagerViewModel.getAllDownloadedModels()
+    }
+  val activeDownloadCount =
+    remember(uiState.modelDownloadStatus) {
+      uiState.modelDownloadStatus.values.count {
+        it.status == ModelDownloadStatusType.IN_PROGRESS ||
+          it.status == ModelDownloadStatusType.PARTIALLY_DOWNLOADED ||
+          it.status == ModelDownloadStatusType.UNZIPPING
+      }
+    }
+  val failedDownloadCount =
+    remember(uiState.modelDownloadStatus) {
+      uiState.modelDownloadStatus.values.count { it.status == ModelDownloadStatusType.FAILED }
+    }
+  var selectedServerModelName by remember { mutableStateOf("") }
+  var useGpuForServer by remember { mutableStateOf(true) }
+  var showUseCases by remember { mutableStateOf(false) }
+
+  LaunchedEffect(downloadedModels, uiState.selectedModel.name) {
+    val selectedModelName = uiState.selectedModel.name
+    val defaultModel =
+      downloadedModels.find { it.name == selectedModelName } ?: downloadedModels.firstOrNull()
+    if (selectedServerModelName.isBlank() || downloadedModels.none { it.name == selectedServerModelName }) {
+      selectedServerModelName = defaultModel?.name.orEmpty()
+    }
+    ServerRuntimeState.setAvailableLocalModelIds(downloadedModels.map { it.name })
+  }
 
   var tasks = uiState.tasks
 
@@ -325,6 +366,28 @@ fun HomeScreen(
                     ),
                 )
               }
+              Spacer(modifier = Modifier.height(16.dp))
+              Row(modifier = Modifier.fillMaxWidth()) {
+                SquareDrawerItem(
+                  label = stringResource(R.string.drawer_use_cases_label),
+                  description = stringResource(R.string.drawer_use_cases_description),
+                  icon = Icons.Rounded.Flag,
+                  onClick = {
+                    showUseCases = true
+                    scope.launch { drawerState.close() }
+                  },
+                  modifier = Modifier.weight(1f),
+                  iconBrush =
+                    linearGradient(
+                      colors =
+                        listOf(
+                          MaterialTheme.customColors.taskBgGradientColors[0][0],
+                          MaterialTheme.customColors.taskBgGradientColors[0][1],
+                        )
+                    ),
+                )
+                Spacer(modifier = Modifier.weight(1f))
+              }
             }
           }
         },
@@ -418,11 +481,166 @@ fun HomeScreen(
                 )
               }
 
-              Column(modifier = Modifier.fillMaxWidth()) {
-                var selectedCategoryIndex by remember { mutableIntStateOf(0) }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                  var selectedCategoryIndex by remember { mutableIntStateOf(0) }
 
-                // App title and intro text.
-                Column(
+                  Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    colors =
+                      CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                  ) {
+                    Column(
+                      modifier = Modifier.fillMaxWidth().padding(16.dp),
+                      verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      val selectedServerModel: Model? =
+                        downloadedModels.firstOrNull { it.name == selectedServerModelName }
+
+                      fun startOrSwapServer(model: Model) {
+                        modelManagerViewModel.selectModel(model)
+                        val serviceIntent =
+                          ServerService.buildStartIntent(
+                            context = context,
+                            modelPath = model.getPath(context),
+                            useGpu = useGpuForServer,
+                          )
+                        startForegroundService(context, serviceIntent)
+                      }
+
+                      Text(
+                        text = stringResource(R.string.server_status_title),
+                        style = MaterialTheme.typography.titleMedium,
+                      )
+                      Text(
+                        text =
+                          stringResource(
+                            if (serverStatus.running) {
+                              R.string.server_status_running
+                            } else {
+                              R.string.server_status_stopped
+                            }
+                          ),
+                        style = MaterialTheme.typography.bodyMedium,
+                      )
+                      Text(
+                        text =
+                          stringResource(
+                            R.string.server_local_api_url,
+                            serverStatus.apiUrl.ifBlank {
+                              context.getString(R.string.server_default_api_url)
+                            }
+                          ),
+                        style = MaterialTheme.typography.bodySmall,
+                      )
+
+                      Text(
+                        text = "Server model",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp),
+                      )
+
+                      var modelDropdownExpanded by remember { mutableStateOf(false) }
+                      ExposedDropdownMenuBox(
+                        expanded = modelDropdownExpanded,
+                        onExpandedChange = { modelDropdownExpanded = !modelDropdownExpanded },
+                      ) {
+                        TextField(
+                          value =
+                            selectedServerModel?.displayName?.ifEmpty { selectedServerModel.name }
+                              ?: "No downloaded model",
+                          onValueChange = {},
+                          readOnly = true,
+                          modifier = Modifier.menuAnchor().fillMaxWidth(),
+                          trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelDropdownExpanded)
+                          },
+                          singleLine = true,
+                        )
+                        ExposedDropdownMenu(
+                          expanded = modelDropdownExpanded,
+                          onDismissRequest = { modelDropdownExpanded = false },
+                        ) {
+                          downloadedModels.forEach { model ->
+                            DropdownMenuItem(
+                              text = { Text(model.displayName.ifEmpty { model.name }) },
+                              onClick = {
+                                selectedServerModelName = model.name
+                                modelDropdownExpanded = false
+                                if (serverStatus.running) {
+                                  startOrSwapServer(model)
+                                }
+                              },
+                            )
+                          }
+                        }
+                      }
+
+                      Text(
+                        text = "Hardware backend",
+                        style = MaterialTheme.typography.labelLarge,
+                      )
+                      Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                      ) {
+                        Row(
+                          verticalAlignment = Alignment.CenterVertically,
+                          modifier = Modifier.clickable {
+                            useGpuForServer = false
+                            if (serverStatus.running && selectedServerModel != null) {
+                              startOrSwapServer(selectedServerModel)
+                            }
+                          },
+                        ) {
+                          RadioButton(selected = !useGpuForServer, onClick = null)
+                          Text(text = Accelerator.CPU.label)
+                        }
+                        Row(
+                          verticalAlignment = Alignment.CenterVertically,
+                          modifier = Modifier.clickable {
+                            useGpuForServer = true
+                            if (serverStatus.running && selectedServerModel != null) {
+                              startOrSwapServer(selectedServerModel)
+                            }
+                          },
+                        ) {
+                          RadioButton(selected = useGpuForServer, onClick = null)
+                          Text(text = Accelerator.GPU.label)
+                        }
+                      }
+
+                      TextButton(
+                        enabled = serverStatus.running || selectedServerModel != null,
+                        onClick = {
+                          val serviceIntent: Intent =
+                            if (serverStatus.running) {
+                              ServerService.buildStopIntent(context)
+                            } else {
+                              if (selectedServerModel == null) {
+                                return@TextButton
+                              }
+                              ServerService.buildStartIntent(
+                                context = context,
+                                modelPath = selectedServerModel.getPath(context),
+                                useGpu = useGpuForServer,
+                              ).also { modelManagerViewModel.selectModel(selectedServerModel) }
+                            }
+                          startForegroundService(context, serviceIntent)
+                        }
+                      ) {
+                        Text(
+                          text =
+                            stringResource(
+                              if (serverStatus.running) R.string.server_stop
+                              else R.string.server_start
+                            )
+                        )
+                      }
+                    }
+                  }
+
+                  // App title and intro text.
+                  Column(
                   modifier =
                     Modifier.padding(
                         horizontal = if (gm4) 24.dp else 40.dp,
@@ -438,44 +656,97 @@ fun HomeScreen(
                     AppTitle(enableAnimation = enableAnimation)
                   }
                   IntroText(enableAnimation = enableAnimation, gm4 = gm4)
-                  if (gm4) {
-                    TryGm4IntroText(enableAnimation = enableAnimation)
+                }
+
+                Card(
+                  modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                  colors =
+                    CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                ) {
+                  Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                  ) {
+                    Text(
+                      text = stringResource(R.string.home_downloads_title),
+                      style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                      text = stringResource(R.string.home_downloads_available, downloadedModels.size),
+                      style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                      text = stringResource(R.string.home_downloads_active, activeDownloadCount),
+                      style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (failedDownloadCount > 0) {
+                      Text(
+                        text = stringResource(R.string.home_downloads_failed, failedDownloadCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                      )
+                    }
+                    TextButton(onClick = onModelsClicked) {
+                      Text(text = stringResource(R.string.home_manage_models))
+                    }
                   }
                 }
 
-                // Tab header for categories.
-                //
-                // synchronizes the `pagerState` and the `selectedCategoryIndex` to ensure that
-                //  both the tab header and the task list always show the correct category and page.
-                val pagerState = rememberPagerState(pageCount = { sortedCategories.size })
-                LaunchedEffect(pagerState.settledPage) {
-                  selectedCategoryIndex = pagerState.settledPage
-                }
-                if (sortedCategories.size > 1) {
-                  CategoryTabHeader(
-                    sortedCategories = sortedCategories,
-                    selectedIndex = selectedCategoryIndex,
-                    enableAnimation = enableAnimation,
-                    onCategorySelected = { index ->
-                      selectedCategoryIndex = index
-                      scope.launch { pagerState.animateScrollToPage(page = index) }
-                    },
-                  )
-                }
+                if (showUseCases) {
+                  // Tab header for categories.
+                  //
+                  // synchronizes the `pagerState` and the `selectedCategoryIndex` to ensure that
+                  //  both the tab header and the task list always show the correct category and page.
+                  val pagerState = rememberPagerState(pageCount = { sortedCategories.size })
+                  LaunchedEffect(pagerState.settledPage) {
+                    selectedCategoryIndex = pagerState.settledPage
+                  }
+                  if (sortedCategories.size > 1) {
+                    CategoryTabHeader(
+                      sortedCategories = sortedCategories,
+                      selectedIndex = selectedCategoryIndex,
+                      enableAnimation = enableAnimation,
+                      onCategorySelected = { index ->
+                        selectedCategoryIndex = index
+                        scope.launch { pagerState.animateScrollToPage(page = index) }
+                      },
+                    )
+                  }
 
-                // Task list in a horizontal pager. Each page shows the list of tasks for the
-                // category.
-                val grid = gm4
-                TaskList(
-                  modelManagerViewModel = modelManagerViewModel,
-                  pagerState = pagerState,
-                  sortedCategories = sortedCategories,
-                  tasksByCategories = uiState.tasksByCategory,
-                  enableAnimation = enableAnimation,
-                  navigateToTaskScreen = navigateToTaskScreen,
-                  gm4 = gm4,
-                  grid = grid,
-                )
+                  // Task list in a horizontal pager. Each page shows the list of tasks for the
+                  // category.
+                  val grid = gm4
+                  TaskList(
+                    modelManagerViewModel = modelManagerViewModel,
+                    pagerState = pagerState,
+                    sortedCategories = sortedCategories,
+                    tasksByCategories = uiState.tasksByCategory,
+                    enableAnimation = enableAnimation,
+                    navigateToTaskScreen = navigateToTaskScreen,
+                    gm4 = gm4,
+                    grid = grid,
+                  )
+                } else {
+                  Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                    colors =
+                      CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                  ) {
+                    Column(
+                      modifier = Modifier.fillMaxWidth().padding(16.dp),
+                      verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      Text(
+                        text = stringResource(R.string.home_use_cases_hidden_title),
+                        style = MaterialTheme.typography.titleMedium,
+                      )
+                      Text(
+                        text = stringResource(R.string.home_use_cases_hidden_description),
+                        style = MaterialTheme.typography.bodyMedium,
+                      )
+                    }
+                  }
+                }
 
                 Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding() + 10.dp))
               }
@@ -620,8 +891,8 @@ private fun AppTitle(enableAnimation: Boolean) {
 
 @Composable
 fun AppTitleGm4(enableAnimation: Boolean) {
-  val text1 = "Google"
-  val text2 = "AI Edge Gallery"
+  val text1 = "Mobile"
+  val text2 = "LLMServer"
   val annotatedText = buildAnnotatedString {
     withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(text1) }
     append(" ")
@@ -645,8 +916,6 @@ fun AppTitleGm4(enableAnimation: Boolean) {
 
 @Composable
 private fun IntroText(enableAnimation: Boolean, gm4: Boolean) {
-  val litertUrl = "https://huggingface.co/litert-community"
-
   // Intro text animation:
   //
   // fade in + slide up.
@@ -662,18 +931,13 @@ private fun IntroText(enableAnimation: Boolean, gm4: Boolean) {
     }
 
   val introText = buildAnnotatedString {
-    val gemma4Url = "https://ai.google.dev/gemma"
     if (gm4) {
-      append("Discover the power of on-device AI models from the ")
-      append(buildTrackableUrlAnnotatedString(url = litertUrl, linkText = "LiteRT community"))
-      append(", featuring the all-new ")
-      append(buildTrackableUrlAnnotatedString(url = gemma4Url, linkText = "Gemma 4"))
-      append(".")
+      append(stringResource(R.string.home_server_intro))
     } else {
       append("${stringResource(R.string.app_intro)} ")
       append(
         buildTrackableUrlAnnotatedString(
-          url = litertUrl,
+          url = "https://huggingface.co/litert-community",
           linkText = stringResource(R.string.litert_community_label),
         )
       )

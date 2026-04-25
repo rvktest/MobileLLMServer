@@ -57,6 +57,14 @@ interface DataStoreRepository {
 
   fun readImportedModels(): List<ImportedModel>
 
+  fun saveSelectedModelName(modelName: String)
+
+  fun readSelectedModelName(): String
+
+  fun saveServerAutostartEnabled(enabled: Boolean)
+
+  fun readServerAutostartEnabled(): Boolean
+
   fun isTosAccepted(): Boolean
 
   fun acceptTos()
@@ -218,6 +226,28 @@ class DefaultDataStoreRepository(
       val settings = dataStore.data.first()
       settings.importedModelList
     }
+  }
+
+  override fun saveSelectedModelName(modelName: String) {
+    runBlocking {
+      dataStore.updateData { settings -> settings.toBuilder().setSelectedModelName(modelName).build() }
+    }
+  }
+
+  override fun readSelectedModelName(): String {
+    return runBlocking { dataStore.data.first().selectedModelName }
+  }
+
+  override fun saveServerAutostartEnabled(enabled: Boolean) {
+    runBlocking {
+      dataStore.updateData { settings ->
+        settings.toBuilder().setServerAutostartEnabled(enabled).build()
+      }
+    }
+  }
+
+  override fun readServerAutostartEnabled(): Boolean {
+    return runBlocking { dataStore.data.first().serverAutostartEnabled }
   }
 
   override fun isTosAccepted(): Boolean {

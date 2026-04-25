@@ -50,6 +50,7 @@ import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -63,6 +64,7 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -91,6 +93,7 @@ import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.RuntimeType
 import com.google.ai.edge.gallery.data.Task
+import com.google.ai.edge.gallery.data.isMediaPipeCompatibleModelFile
 import com.google.ai.edge.gallery.proto.ImportedModel
 import com.google.ai.edge.gallery.ui.common.TaskIcon
 import com.google.ai.edge.gallery.ui.common.modelitem.ModelItem
@@ -119,6 +122,8 @@ fun GlobalModelManager(
   var showImportModelSheet by remember { mutableStateOf(false) }
   var showUnsupportedFileTypeDialog by remember { mutableStateOf(false) }
   var showUnsupportedWebModelDialog by remember { mutableStateOf(false) }
+  var showHuggingFaceUrlDialog by remember { mutableStateOf(false) }
+  var huggingFaceUrl by remember { mutableStateOf("") }
   val selectedLocalModelFileUri = remember { mutableStateOf<Uri?>(null) }
   val selectedImportedModelInfo = remember { mutableStateOf<ImportedModel?>(null) }
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -143,8 +148,7 @@ fun GlobalModelManager(
         result.data?.data?.let { uri ->
           val fileName = getFileName(context = context, uri = uri)
           Log.d(TAG, "Selected file: $fileName")
-          // Show warning for model file types other than .task and .litertlm.
-          if (fileName != null && !fileName.endsWith(".task") && !fileName.endsWith(".litertlm")) {
+          if (fileName != null && !isMediaPipeCompatibleModelFile(fileName)) {
             showUnsupportedFileTypeDialog = true
           }
           // Show warning for web-only model (by checking if the file name has "-web" in it).
@@ -437,6 +441,27 @@ fun GlobalModelManager(
           Text("From local model file", modifier = Modifier.clearAndSetSemantics {})
         }
       }
+      val cbImportFromHf = stringResource(R.string.import_model_from_hf_url)
+      Box(
+        modifier =
+          Modifier.clickable {
+              showImportModelSheet = false
+              showHuggingFaceUrlDialog = true
+            }
+            .semantics {
+              role = Role.Button
+              contentDescription = cbImportFromHf
+            }
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+          modifier = Modifier.fillMaxWidth().padding(16.dp),
+        ) {
+          Icon(Icons.Rounded.Link, contentDescription = null)
+          Text(stringResource(R.string.import_model_from_hf_url), modifier = Modifier.clearAndSetSemantics {})
+        }
+      }
     }
   }
 
@@ -487,7 +512,7 @@ fun GlobalModelManager(
       },
       onDismissRequest = { showUnsupportedFileTypeDialog = false },
       title = { Text("Unsupported file type") },
-      text = { Text("Only \".task\" or \".litertlm\" file type is supported.") },
+      text = { Text("Only \".task\", \".litertlm\", or \".bin\" file type is supported.") },
       confirmButton = {
         Button(onClick = { showUnsupportedFileTypeDialog = false }) {
           Text(stringResource(R.string.ok))
@@ -511,6 +536,41 @@ fun GlobalModelManager(
       text = { Text("Looks like the model is a web-only model and is not supported by the app.") },
       confirmButton = {
         Button(onClick = { showUnsupportedWebModelDialog = false }) {
+          Text(stringResource(R.string.ok))
+        }
+      },
+    )
+  }
+
+  if (showHuggingFaceUrlDialog) {
+    AlertDialog(
+      onDismissRequest = { showHuggingFaceUrlDialog = false },
+      title = { Text(stringResource(R.string.hf_url_dialog_title)) },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          TextField(
+            value = huggingFaceUrl,
+            onValueChange = { huggingFaceUrl = it },
+            singleLine = true,
+            placeholder = { Text(stringResource(R.string.hf_url_dialog_hint)) },
+          )
+          Text(
+            text = stringResource(R.string.hf_url_dialog_note),
+            style = MaterialTheme.typography.bodySmall,
+          )
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            showHuggingFaceUrlDialog = false
+            scope.launch {
+              snackbarHostState.showSnackbar(
+                "Hugging Face URL import is not available yet."
+              )
+            }
+          }
+        ) {
           Text(stringResource(R.string.ok))
         }
       },
